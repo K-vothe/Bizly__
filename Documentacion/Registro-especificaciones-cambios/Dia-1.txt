@@ -1,0 +1,9 @@
+Dia 1 
+Fecha:14/09/2026
+Hora de inicio: 7:45 P.M
+
+para hacer :git ignore de frontend y back end
+
+--cada uno se encargara de una funcionalidad dentro del backend
+    ---
+    

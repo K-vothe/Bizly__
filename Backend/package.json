@@ -9,7 +9,12 @@
     "check": "node --check server.js",
     "create-admin": "node scripts/createAdmin.js"
   },
-  "keywords": ["bizly", "express", "mysql", "jwt"],
+  "keywords": [
+    "bizly",
+    "express",
+    "mysql",
+    "jwt"
+  ],
   "author": "Equipo Bizly",
   "license": "ISC",
   "type": "commonjs",
@@ -21,5 +26,14 @@
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.22.5",
     "nodemailer": "^8.0.10"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.6.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3"
   }
 }

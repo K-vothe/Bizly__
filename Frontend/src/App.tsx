@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, ComponentType } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import { apiFetch, clearSession, saveSession } from './services/api'
 import Sidebar from './components/Sidebar'
@@ -15,7 +15,23 @@ import Login from './pages/Login'
 import Registro from './pages/Registro'
 import RecuperarPassword from './pages/RecuperarPassword'
 
-const PAGES = {
+export interface Usuario {
+  id?: number;
+  nombre?: string;
+  nombreCompleto?: string;
+  apellido?: string;
+  correo?: string;
+  rol?: string;
+  [key: string]: any;
+}
+
+export interface AuthSession {
+  token: string | null;
+  refreshToken: string | null;
+  usuario: Usuario;
+}
+
+const PAGES: Record<string, ComponentType<any>> = {
   dashboard: Dashboard,
   ventas: Ventas,
   inventario: Inventario,
@@ -26,7 +42,7 @@ const PAGES = {
   cuenta: MiCuenta,
 }
 
-const PAGE_LABELS = {
+const PAGE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
   ventas: 'Ventas',
   inventario: 'Inventario',
@@ -39,15 +55,21 @@ const PAGE_LABELS = {
 
 const ADMIN_ONLY_PAGES = ['auditoria', 'configuracion']
 
-function Shell({ usuario, onLogout, onSessionClosed }) {
+interface ShellProps {
+  usuario?: Usuario | null;
+  onLogout: () => void;
+  onSessionClosed: () => void;
+}
+
+function Shell({ usuario, onLogout, onSessionClosed }: ShellProps) {
   const [activePage, setActivePage] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
-  const { toast, setToast, state } = useApp()
+  const { toast, setToast, state } = useApp() as any
   const esAdmin = usuario?.rol === 'admin'
   const pageSegura = ADMIN_ONLY_PAGES.includes(activePage) && !esAdmin ? 'dashboard' : activePage
   const PageComponent = PAGES[pageSegura] || Dashboard
 
-  function navigate(page) {
+  function navigate(page: string) {
     setActivePage(page)
     setMenuOpen(false)
   }
@@ -70,7 +92,7 @@ function Shell({ usuario, onLogout, onSessionClosed }) {
           </button>
           <div className="app-header-copy">
             <strong>{PAGE_LABELS[pageSegura]}</strong>
-            <span>{state.config.nombre || 'Mi Tienda'}</span>
+            <span>{state?.config?.nombre || 'Mi Tienda'}</span>
           </div>
           <div className="app-header-user">{usuario?.nombreCompleto || usuario?.nombre}</div>
         </header>
@@ -89,7 +111,7 @@ function Shell({ usuario, onLogout, onSessionClosed }) {
           <footer className="app-footer">Bizly · Sistema de gestión empresarial</footer>
         </main>
       </div>
-      <Toast toast={toast} onClose={() => setToast(null)} />
+      <Toast toast={toast} onClose={() => setToast?.(null)} />
     </div>
   )
 }
@@ -104,8 +126,8 @@ function SessionSplash() {
 }
 
 export default function App() {
-  const [auth, setAuth] = useState(null)
-  const [pantalla, setPantalla] = useState('login')
+  const [auth, setAuth] = useState<AuthSession | null>(null)
+  const [pantalla, setPantalla] = useState<'login' | 'registro' | 'recuperar'>('login')
   const [checkingSession, setCheckingSession] = useState(true)
 
   function closeLocalSession() {
@@ -124,7 +146,7 @@ export default function App() {
     }
 
     apiFetch('/auth/me')
-      .then(({ usuario }) => {
+      .then(({ usuario }: { usuario: Usuario }) => {
         saveSession({ usuario })
         setAuth({ token: localStorage.getItem('bizly_token'), refreshToken: localStorage.getItem('bizly_refresh_token'), usuario })
       })
@@ -136,7 +158,7 @@ export default function App() {
     return () => window.removeEventListener('bizly-session-expired', expire)
   }, [])
 
-  function handleLogin(accessToken, refreshToken, usuario) {
+  function handleLogin(accessToken: string, refreshToken: string, usuario: Usuario) {
     saveSession({ accessToken, refreshToken, usuario })
     setAuth({ token: accessToken, refreshToken, usuario })
   }

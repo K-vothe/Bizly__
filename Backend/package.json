@@ -4,8 +4,10 @@
   "description": "API REST segura para Bizly",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
     "check": "node --check server.js",
     "create-admin": "node scripts/createAdmin.js"
   },

@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 interface JwtUserPayload {
   id: number;
   id_empresa: number;
-  rol: 'owner' | 'administrador' | 'empleado';
+  rol: 'owner' | 'administrador' | 'empleado' | 'admin';
   correo: string;
 }
 
@@ -27,8 +27,8 @@ export const authenticate = (
   }
 
   const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    res.status(401).json({ error: 'JWT_SECRET no configurado' });
+  if (!secret || secret.trim() === '' || secret.trim().toLowerCase() === 'secret') {
+    res.status(401).json({ error: 'JWT_SECRET no configurado o inseguro' });
     return;
   }
 

@@ -1,7 +1,18 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { toast } from 'sonner';
 
-export const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const getBaseURL = (): string => {
+  const envUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (!envUrl) return 'http://localhost:4001/api';
+  const cleanUrl = envUrl.replace(/\/+$/, '');
+  return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+};
+
+export const baseURL = getBaseURL();
 export const API_URL = baseURL;
+
+
+export const TOKEN_KEY = 'token';
 
 export const api: AxiosInstance = axios.create({
   baseURL,
@@ -12,13 +23,50 @@ export const api: AxiosInstance = axios.create({
 
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('bizly_token') || localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('bizly_token');
     if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = 'Bearer ' + token.trim();
+    }
+    if (config.url && config.baseURL?.endsWith('/api') && config.url.startsWith('/api/')) {
+      config.url = config.url.replace(/^\/api/, '');
     }
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const url = (error.config?.url || '').toLowerCase();
+
+    // 1. Manejo global de 401 (Sesión inválida / Token revocado en caliente)
+    if (status === 401) {
+      const isAuthEndpoint =
+        url.includes('/auth/login') ||
+        url.includes('/auth/register') ||
+        url.includes('/auth/send-otp') ||
+        url.includes('/auth/verify-otp') ||
+        url.includes('/auth/reset-password') ||
+        url.includes('/auth/forgot-password');
+
+      if (!isAuthEndpoint) {
+        clearSession();
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
+    }
+
+    // 2. Manejo global de 500 o caídas de red (ERR_NETWORK)
+    const isNetworkError = !error.response || error.code === 'ERR_NETWORK';
+    if (isNetworkError || (typeof status === 'number' && status >= 500)) {
+      toast.error('Error interno del servidor. Nuestro equipo ha sido notificado.');
+    }
+
+    return Promise.reject(error);
+  }
 );
 
 export class ApiError extends Error {
@@ -42,15 +90,25 @@ export function saveSession({
   refreshToken?: string;
   usuario?: any;
 }): void {
-  if (accessToken) localStorage.setItem('bizly_token', accessToken);
+  if (accessToken) {
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    localStorage.setItem('bizly_token', accessToken);
+  }
   if (refreshToken) localStorage.setItem('bizly_refresh_token', refreshToken);
   if (usuario) localStorage.setItem('bizly_usuario', JSON.stringify(usuario));
 }
 
 export function clearSession(): void {
+  localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem('bizly_token');
   localStorage.removeItem('bizly_refresh_token');
   localStorage.removeItem('bizly_usuario');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('usuario');
+  localStorage.removeItem('user');
+  try {
+    sessionStorage.clear();
+  } catch {}
 }
 
 export async function publicFetch(path: string, options: RequestInit = {}): Promise<any> {
@@ -68,7 +126,7 @@ export async function publicFetch(path: string, options: RequestInit = {}): Prom
 }
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
-  const token = localStorage.getItem('bizly_token') || localStorage.getItem('token');
+  const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('bizly_token');
   const url = `${baseURL}${path.startsWith('/') ? '' : '/'}${path}`;
   const res = await fetch(url, {
     ...options,

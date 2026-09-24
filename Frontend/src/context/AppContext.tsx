@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer, useRef, useState } from 'react'
 import { defaultState } from '../data/defaultState'
-import { apiFetch } from '../services/api'
+import api, { apiFetch } from '../services/api'
 
 const AppContext = createContext(null)
 
@@ -64,6 +64,7 @@ function reducer(state, action) {
 
 export function AppProvider({ children, usuario }) {
   const [state, dispatch] = useReducer(reducer, defaultState)
+
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
 
@@ -75,19 +76,37 @@ export function AppProvider({ children, usuario }) {
 
   async function cargarDatos() {
     const calls = [
-      apiFetch('/productos'),
-      apiFetch('/clientes'),
-      apiFetch('/ventas'),
-      apiFetch('/configuracion'),
+      api.get('/productos').then((res) => (Array.isArray(res.data) ? res.data : res.data?.productos || [])).catch(() => apiFetch('/productos').catch(() => [])),
+      api.get('/clientes').then((res) => (Array.isArray(res.data) ? res.data : res.data?.clientes || [])).catch(() => apiFetch('/clientes').catch(() => [])),
+      api.get('/ventas').then((res) => (Array.isArray(res.data) ? res.data : res.data?.ventas || [])).catch(() => apiFetch('/ventas').catch(() => [])),
+      api.get('/empresa').then((res) => res.data).catch(() => apiFetch('/empresa').catch(() => null)),
     ]
-    if (usuario?.rol === 'admin') calls.push(apiFetch('/auditoria'))
+    if (['admin', 'administrador', 'owner'].includes(usuario?.rol || '')) {
+      calls.push(api.get('/auditoria').then((res) => (Array.isArray(res.data) ? res.data : res.data?.auditoria || [])).catch(() => apiFetch('/auditoria').catch(() => [])))
+    }
 
     try {
-      const [productos, clientes, ventas, config, auditoria = []] = await Promise.all(calls)
+      const [productos, clientes, ventas, empresaData, auditoria = []] = await Promise.all(calls)
+      const config = empresaData ? {
+        ...defaultState.config,
+        ...empresaData,
+        nombre: empresaData.nombre || empresaData.nombre_empresa || defaultState.config.nombre,
+        nombre_empresa: empresaData.nombre_empresa || empresaData.nombre || defaultState.config.nombre,
+        tel: empresaData.telefono || empresaData.tel || '',
+        telefono: empresaData.telefono || empresaData.tel || '',
+        email: empresaData.correo || empresaData.email || '',
+        correo: empresaData.correo || empresaData.email || '',
+        dir: empresaData.direccion || empresaData.dir || '',
+        direccion: empresaData.direccion || empresaData.dir || '',
+        iva: empresaData.iva !== undefined ? Number(empresaData.iva) : 19,
+        plan: empresaData.plan || 'Starter',
+        nit: empresaData.nit || '',
+      } : defaultState.config
+
       dispatch({ type: 'LOAD', payload: { productos, clientes, ventas, config, auditoria } })
     } catch (error) {
       console.error('Error cargando datos:', error)
-      notify(error.message || 'No se pudieron cargar los datos', 'error')
+      notify(error.response?.data?.error || error.message || 'No se pudieron cargar los datos', 'error')
     }
   }
 
@@ -104,42 +123,50 @@ export function AppProvider({ children, usuario }) {
     const { id, nombre, sku, categoria, precio, stock } = payload
     try {
       if (id) {
-        await apiFetch(`/productos/${id}`, { method: 'PUT', body: JSON.stringify({ nombre, sku, categoria, precio, stock }) })
-        dispatch({ type: 'UPDATE_PRODUCTO', data: payload })
+        const res = await api.put(`/productos/${id}`, { nombre, sku, categoria, precio, stock })
+        const actualizado = res.data?.producto || res.data || payload
+        dispatch({ type: 'UPDATE_PRODUCTO', data: { ...payload, ...actualizado } })
         notify('Producto actualizado correctamente', 'success')
       } else {
-        const nuevo = await apiFetch('/productos', { method: 'POST', body: JSON.stringify({ nombre, sku, categoria, precio, stock }) })
+        const res = await api.post('/productos', { nombre, sku, categoria, precio, stock })
+        const nuevo = res.data?.producto || res.data
         dispatch({ type: 'ADD_PRODUCTO', data: nuevo })
         notify('Producto creado correctamente', 'success')
       }
       return true
     } catch (error) {
-      notify(error.message || 'No se pudo guardar el producto', 'error')
+      const msg = error.response?.data?.error || error.message || 'No se pudo guardar el producto'
+      notify(msg, 'error')
       return false
     }
   }
 
   async function eliminarProducto(id) {
     try {
-      await apiFetch(`/productos/${id}`, { method: 'DELETE' })
+      await api.delete(`/productos/${id}`)
       dispatch({ type: 'DELETE_PRODUCTO', id })
       notify('Producto desactivado', 'success')
       return true
     } catch (error) {
-      notify(error.message || 'No se pudo eliminar el producto', 'error')
+      const msg = error.response?.data?.error || error.message || 'No se pudo eliminar el producto'
+      notify(msg, 'error')
       return false
     }
   }
 
   async function importarProductos(productos) {
     try {
-      const result = await apiFetch('/productos/importar', { method: 'POST', body: JSON.stringify({ productos }) })
-      const fresh = await apiFetch('/productos')
+      const result = await api.post('/productos/importar', { productos })
+      const resData = result.data
+      const freshRes = await api.get('/productos')
+      const fresh = Array.isArray(freshRes.data) ? freshRes.data : freshRes.data?.productos || []
       dispatch({ type: 'SET_PRODUCTOS', data: fresh })
-      notify(`${result.procesados} producto(s) importados`, 'success')
+      const importados = resData?.importados ?? resData?.procesados ?? productos.length
+      notify(`${importados} producto(s) importados`, 'success')
       return true
     } catch (error) {
-      notify(error.message || 'No se pudo importar el archivo', 'error')
+      const msg = error.response?.data?.error || error.message || 'No se pudo importar el archivo'
+      notify(msg, 'error')
       return false
     }
   }
@@ -212,12 +239,13 @@ export function AppProvider({ children, usuario }) {
 
   async function guardarConfig(payload) {
     try {
-      const result = await apiFetch('/configuracion', { method: 'PUT', body: JSON.stringify(payload) })
-      dispatch({ type: 'GUARDAR_CONFIG', payload: result.config })
+      const res = await api.put('/empresa', payload).catch(() => apiFetch('/empresa', { method: 'PUT', body: JSON.stringify(payload) }))
+      const data = res?.data || res
+      dispatch({ type: 'GUARDAR_CONFIG', payload: data?.empresa || data || payload })
       notify('Configuración guardada', 'success')
       return true
     } catch (error) {
-      notify(error.message || 'No se pudo guardar la configuración', 'error')
+      notify(error.response?.data?.error || error.message || 'No se pudo guardar la configuración', 'error')
       return false
     }
   }

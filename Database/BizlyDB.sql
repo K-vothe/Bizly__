@@ -36,10 +36,13 @@ CREATE TABLE empresas (
   nit VARCHAR(30) NULL,
   telefono VARCHAR(30) NULL,
   direccion VARCHAR(255) NULL,
+  correo VARCHAR(150) NULL,
   moneda CHAR(3) NOT NULL DEFAULT 'COP',
   iva DECIMAL(5,2) NOT NULL DEFAULT 19.00,
   umbral_stock INT NOT NULL DEFAULT 10,
   estado ENUM('Activo', 'Inactivo', 'Suspendido') NOT NULL DEFAULT 'Activo',
+  plan VARCHAR(50) NOT NULL DEFAULT 'Starter',
+  verificado TINYINT(1) NOT NULL DEFAULT 0,
   fecha_registro TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT chk_empresas_iva CHECK (iva >= 0 AND iva <= 100),
@@ -71,6 +74,7 @@ CREATE TABLE usuarios (
   ultimo_acceso DATETIME NULL,
   id_rol INT NOT NULL,
   correo_verificado TINYINT(1) NOT NULL DEFAULT 0,
+  verificado TINYINT(1) NOT NULL DEFAULT 0,
   intentos_fallidos INT NOT NULL DEFAULT 0,
   bloqueado_hasta DATETIME NULL,
   acepta_tratamiento TINYINT(1) NOT NULL DEFAULT 0,
@@ -99,15 +103,15 @@ CREATE TABLE sesiones (
 ) ENGINE=InnoDB;
 
 CREATE TABLE tokens_verificacion (
-  id_token INT AUTO_INCREMENT PRIMARY KEY,
-  token_hash CHAR(64) NOT NULL,
-  fecha_expiracion DATETIME NOT NULL,
-  utilizado TINYINT(1) NOT NULL DEFAULT 0,
-  id_usuario INT NOT NULL,
-  fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_verificacion_usuario (id_usuario),
-  INDEX idx_verificacion_expiracion (fecha_expiracion),
-  CONSTRAINT fk_verificacion_usuario FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  correo VARCHAR(150) NOT NULL,
+  codigo_otp VARCHAR(6) NOT NULL,
+  expira_en DATETIME NOT NULL,
+  usado TINYINT(1) NOT NULL DEFAULT 0,
+  intentos_fallidos TINYINT NOT NULL DEFAULT 0,
+  creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_tokens_correo (correo),
+  INDEX idx_tokens_expira (expira_en)
 ) ENGINE=InnoDB;
 
 CREATE TABLE tokens_recuperacion (
@@ -216,6 +220,7 @@ CREATE TABLE detalle_ventas (
   CONSTRAINT chk_detalle_importes CHECK (precio_unitario >= 0 AND subtotal >= 0),
   INDEX idx_detalle_venta (id_venta),
   INDEX idx_detalle_producto (id_producto),
+  INDEX idx_detalle_ventas_producto (id_producto),
   CONSTRAINT fk_detalle_venta FOREIGN KEY (id_venta) REFERENCES ventas(id_venta) ON DELETE CASCADE,
   CONSTRAINT fk_detalle_producto FOREIGN KEY (id_producto) REFERENCES productos(id_producto)
 ) ENGINE=InnoDB;
@@ -226,8 +231,10 @@ CREATE TABLE auditoria (
   id_empresa INT NOT NULL,
   id_usuario INT NULL,
   accion VARCHAR(50) NOT NULL,
-  tipo VARCHAR(50) NOT NULL,
+  modulo VARCHAR(50) NOT NULL DEFAULT 'SISTEMA',
+  tipo VARCHAR(50) NOT NULL DEFAULT 'OPERACION',
   descripcion TEXT NOT NULL,
+  detalles JSON NULL,
   fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ip VARCHAR(64) NULL,
   user_agent VARCHAR(255) NULL,

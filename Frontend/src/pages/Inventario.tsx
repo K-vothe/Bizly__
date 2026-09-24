@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useApp } from '../context/AppContext'
 import { fmtCOP } from '../services/utils'
+import api from '../services/api'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
+import PlanUpgradeModal from '../components/PlanUpgradeModal'
 
 const CAT_COLORS = ['#ede9fe', '#dcfce7', '#dbeafe', '#fef9c3', '#fee2e2', '#e0f2fe', '#fce7f3']
 const PAGE_SIZE = 12
@@ -37,7 +40,7 @@ function parseProductosCsv(text) {
 }
 
 export default function Inventario() {
-  const { state, guardarProducto, eliminarProducto, importarProductos, notify } = useApp()
+  const { state, dispatch, guardarProducto, eliminarProducto, importarProductos, notify } = useApp()
   const { productos, config } = state
   const umbral = config.umbral ?? 10
   const fileRef = useRef(null)
@@ -53,6 +56,8 @@ export default function Inventario() {
   const [categoria, setCategoria] = useState('')
   const [precio, setPrecio] = useState('')
   const [stock, setStock] = useState('')
+  const [upgradeModal, setUpgradeModal] = useState(false)
+  const [upgradeMsg, setUpgradeMsg] = useState('')
 
   const cats = [...new Set(productos.map((p) => p.categoria).filter(Boolean))]
   const catMap = Object.fromEntries(cats.map((c, i) => [c, CAT_COLORS[i % CAT_COLORS.length]]))
@@ -83,8 +88,53 @@ export default function Inventario() {
     const nPrecio = Number(precio)
     const nStock = Number(stock)
     if (!nombre.trim() || !Number.isFinite(nPrecio) || nPrecio < 0 || !Number.isInteger(nStock) || nStock < 0) return
-    const ok = await guardarProducto({ id: editId, nombre: nombre.trim(), sku: sku.trim(), categoria: categoria.trim(), precio: nPrecio, stock: nStock })
-    if (ok) setModal(false)
+
+    try {
+      if (editId) {
+        const res = await api.put(`/productos/${editId}`, {
+          nombre: nombre.trim(),
+          sku: sku.trim(),
+          categoria: categoria.trim(),
+          precio: nPrecio,
+          stock: nStock,
+        })
+        const actualizado = res.data?.producto || res.data || {
+          id: editId,
+          nombre: nombre.trim(),
+          sku: sku.trim(),
+          categoria: categoria.trim(),
+          precio: nPrecio,
+          stock: nStock,
+        }
+        dispatch({ type: 'UPDATE_PRODUCTO', data: { id: editId, ...actualizado } })
+        notify('Producto actualizado correctamente', 'success')
+        toast.success('Producto actualizado correctamente')
+      } else {
+        const res = await api.post('/productos', {
+          nombre: nombre.trim(),
+          sku: sku.trim(),
+          categoria: categoria.trim(),
+          precio: nPrecio,
+          stock: nStock,
+        })
+        const nuevo = res.data?.producto || res.data
+        dispatch({ type: 'ADD_PRODUCTO', data: nuevo })
+        notify('Producto creado correctamente', 'success')
+        toast.success('Producto creado correctamente')
+      }
+      setModal(false)
+    } catch (error) {
+      if (error.response?.status === 402) {
+        const msg = error.response.data?.error || 'Has alcanzado el límite de productos permitido para tu plan actual.'
+        setUpgradeMsg(msg)
+        setUpgradeModal(true)
+        setModal(false)
+        return
+      }
+      const msg = error.response?.data?.error || error.message || 'No se pudo guardar el producto'
+      notify(msg, 'error')
+      toast.error(msg)
+    }
   }
 
   async function eliminar(p) {
@@ -101,9 +151,27 @@ export default function Inventario() {
       const data = parseProductosCsv(text)
       if (data.length > 500) throw new Error('El archivo no puede superar 500 productos por carga')
       if (!window.confirm(`Se procesarán ${data.length} producto(s). Si un SKU ya existe, se actualizará. ¿Continuar?`)) return
-      await importarProductos(data)
+
+      const response = await api.post('/productos/importar', { productos: data })
+      const resData = response.data
+      const importados = resData?.importados ?? resData?.procesados ?? data.length
+
+      const freshRes = await api.get('/productos')
+      const fresh = Array.isArray(freshRes.data) ? freshRes.data : freshRes.data?.productos || []
+      dispatch({ type: 'SET_PRODUCTOS', data: fresh })
+
+      toast.success(`Se importaron ${importados} producto(s) con éxito`)
+      notify(`${importados} producto(s) importados`, 'success')
     } catch (error) {
-      notify(error.message || 'CSV inválido', 'error')
+      if (error.response?.status === 402) {
+        const msg = error.response.data?.error || 'Has alcanzado el límite de productos permitido para tu plan actual.'
+        setUpgradeMsg(msg)
+        setUpgradeModal(true)
+        return
+      }
+      const msg = error.response?.data?.error || error.message || 'Error al procesar el archivo CSV'
+      toast.error(msg)
+      notify(msg, 'error')
     }
   }
 
@@ -192,6 +260,13 @@ export default function Inventario() {
           </div>
         </div>
       </Modal>
+
+      <PlanUpgradeModal
+        open={upgradeModal}
+        onClose={() => setUpgradeModal(false)}
+        limitMessage={upgradeMsg}
+        limitType="productos"
+      />
     </div>
   )
 }

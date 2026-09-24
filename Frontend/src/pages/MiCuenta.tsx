@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { apiFetch } from '../services/api'
+import api from '../services/api'
 import { useApp } from '../context/AppContext'
 import Modal from '../components/Modal'
 
@@ -14,10 +14,10 @@ export default function MiCuenta({ usuario, onSessionClosed }) {
     if (!window.confirm('¿Cerrar todas las sesiones de Bizly en todos tus dispositivos?')) return
     setLoading(true)
     try {
-      await apiFetch('/auth/logout-all', { method: 'POST' })
+      await api.post('/auth/logout-all')
       onSessionClosed()
     } catch (error) {
-      notify(error.message || 'No se pudieron cerrar las sesiones', 'error')
+      notify(error.response?.data?.error || error.message || 'No se pudieron cerrar las sesiones', 'error')
       setLoading(false)
     }
   }
@@ -29,16 +29,16 @@ export default function MiCuenta({ usuario, onSessionClosed }) {
     }
     setLoading(true)
     try {
-      await apiFetch('/auth/cuenta', {
-        method: 'DELETE',
-        body: JSON.stringify({ password, confirmacion }),
+      await api.delete('/auth/cuenta', {
+        data: { password, confirmacion },
       })
       onSessionClosed()
     } catch (error) {
-      notify(error.message || 'No se pudo eliminar la cuenta', 'error')
+      notify(error.response?.data?.error || error.message || 'No se pudo eliminar la cuenta', 'error')
       setLoading(false)
     }
   }
+
 
   return (
     <div className="page">
@@ -53,7 +53,7 @@ export default function MiCuenta({ usuario, onSessionClosed }) {
           <div className="card-body account-details">
             <div><span>Nombre</span><strong>{usuario?.nombreCompleto || `${usuario?.nombre || ''} ${usuario?.apellido || ''}`.trim()}</strong></div>
             <div><span>Correo</span><strong>{usuario?.correo}</strong></div>
-            <div><span>Rol</span><strong>{usuario?.rol === 'admin' ? 'Administrador' : 'Empleado'}</strong></div>
+            <div><span>Rol</span><strong>{usuario?.rol === 'owner' ? 'Propietario' : ['admin', 'administrador'].includes(usuario?.rol) ? 'Administrador' : 'Empleado'}</strong></div>
           </div>
         </section>
 

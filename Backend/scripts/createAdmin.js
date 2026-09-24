@@ -1,6 +1,6 @@
 require('dotenv').config()
 const bcrypt = require('bcrypt')
-const { pool, testConnection } = require('../config/db')
+const { pool, testConnection } = require('../dist/config/db')
 const { validEmail, validPassword, cleanText } = require('../utils/validation')
 
 async function main() {

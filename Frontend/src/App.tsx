@@ -1,45 +1,41 @@
-import { useEffect, useState, ComponentType } from 'react'
-import { AppProvider, useApp } from './context/AppContext'
-import { apiFetch, clearSession, saveSession } from './services/api'
-import Sidebar from './components/Sidebar'
-import Toast from './components/Toast'
-import Dashboard from './pages/Dashboard'
-import Ventas from './pages/Ventas'
-import Inventario from './pages/Inventario'
-import Clientes from './pages/Clientes'
-import Reportes from './pages/Reportes'
-import Auditoria from './pages/Auditoria'
-import Configuracion from './pages/Configuracion'
-import MiCuenta from './pages/MiCuenta'
-import Login from './pages/Login'
-import Registro from './pages/Registro'
-import RecuperarPassword from './pages/RecuperarPassword'
+import React, { useEffect, useState } from 'react';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+  Link,
+  Outlet,
+} from 'react-router-dom';
+import { Toaster } from 'sonner';
+import { AppProvider, useApp } from './context/AppContext';
+import api, { clearSession, saveSession, TOKEN_KEY } from './services/api';
+import Sidebar from './components/Sidebar';
+import Toast from './components/Toast';
+import ProtectedRoute, { Usuario } from './components/ProtectedRoute';
+import PublicRoute from './components/PublicRoute';
+import Dashboard from './pages/Dashboard';
+import VentasPage from './pages/VentasPage';
+import Inventario from './pages/Inventario';
+import Clientes from './pages/Clientes';
+import ReportesPage from './pages/ReportesPage';
+import Auditoria from './pages/Auditoria';
+import Configuracion from './pages/Configuracion';
+import MiCuenta from './pages/MiCuenta';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import LandingPage from './pages/LandingPage';
+import AboutPage from './pages/AboutPage';
 
-export interface Usuario {
-  id?: number;
-  nombre?: string;
-  nombreCompleto?: string;
-  apellido?: string;
-  correo?: string;
-  rol?: string;
-  [key: string]: any;
-}
+export type { Usuario };
 
 export interface AuthSession {
   token: string | null;
   refreshToken: string | null;
   usuario: Usuario;
-}
-
-const PAGES: Record<string, ComponentType<any>> = {
-  dashboard: Dashboard,
-  ventas: Ventas,
-  inventario: Inventario,
-  clientes: Clientes,
-  reportes: Reportes,
-  auditoria: Auditoria,
-  configuracion: Configuracion,
-  cuenta: MiCuenta,
 }
 
 const PAGE_LABELS: Record<string, string> = {
@@ -51,69 +47,69 @@ const PAGE_LABELS: Record<string, string> = {
   auditoria: 'Auditoría',
   configuracion: 'Configuración',
   cuenta: 'Mi cuenta',
-}
+};
 
-const ADMIN_ONLY_PAGES = ['auditoria', 'configuracion']
+const ADMIN_ROLES = ['admin', 'administrador', 'owner'];
 
-interface ShellProps {
+function MainLayout({
+  usuario,
+  onLogout,
+}: {
   usuario?: Usuario | null;
   onLogout: () => void;
-  onSessionClosed: () => void;
-}
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { toast, setToast, state } = (useApp() as any) || {};
+  const location = useLocation();
 
-function Shell({ usuario, onLogout, onSessionClosed }: ShellProps) {
-  const [activePage, setActivePage] = useState('dashboard')
-  const [menuOpen, setMenuOpen] = useState(false)
-  const { toast, setToast, state } = useApp() as any
-  const esAdmin = usuario?.rol === 'admin'
-  const pageSegura = ADMIN_ONLY_PAGES.includes(activePage) && !esAdmin ? 'dashboard' : activePage
-  const PageComponent = PAGES[pageSegura] || Dashboard
-
-  function navigate(page: string) {
-    setActivePage(page)
-    setMenuOpen(false)
-  }
+  const currentPath = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
+  const pageLabel = PAGE_LABELS[currentPath] || 'Dashboard';
 
   return (
     <div className="app-shell">
       <Sidebar
-        activePage={pageSegura}
-        onNav={navigate}
         usuario={usuario}
         onLogout={onLogout}
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
       />
-      {menuOpen && <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <button
+          className="sidebar-backdrop"
+          aria-label="Cerrar menú"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
       <div className="content-shell">
         <header className="app-header">
-          <button className="mobile-menu-btn" onClick={() => setMenuOpen(true)} aria-label="Abrir menú">
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Abrir menú"
+          >
             <i className="ti ti-menu-2" />
           </button>
           <div className="app-header-copy">
-            <strong>{PAGE_LABELS[pageSegura]}</strong>
+            <strong>{pageLabel}</strong>
             <span>{state?.config?.nombre || 'Mi Tienda'}</span>
           </div>
-          <div className="app-header-user">{usuario?.nombreCompleto || usuario?.nombre}</div>
+          <div className="app-header-user">
+            {usuario?.nombreCompleto || usuario?.nombre}
+          </div>
         </header>
         <main className="main-content">
           <div className="breadcrumb" aria-label="Ruta de navegación">
-            <button onClick={() => navigate('dashboard')}>Bizly</button>
+            <Link to="/dashboard">Bizly</Link>
             <span>/</span>
-            <strong>{PAGE_LABELS[pageSegura]}</strong>
+            <strong>{pageLabel}</strong>
           </div>
-          <PageComponent
-            onNav={navigate}
-            usuario={usuario}
-            onLogout={onLogout}
-            onSessionClosed={onSessionClosed}
-          />
+          <Outlet />
           <footer className="app-footer">Bizly · Sistema de gestión empresarial</footer>
         </main>
       </div>
       <Toast toast={toast} onClose={() => setToast?.(null)} />
     </div>
-  )
+  );
 }
 
 function SessionSplash() {
@@ -122,73 +118,202 @@ function SessionSplash() {
       <i className="ti ti-building-store" />
       <span>Bizly</span>
     </div>
-  )
+  );
 }
 
-export default function App() {
-  const [auth, setAuth] = useState<AuthSession | null>(null)
-  const [pantalla, setPantalla] = useState<'login' | 'registro' | 'recuperar'>('login')
-  const [checkingSession, setCheckingSession] = useState(true)
+function AppContent() {
+  const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const navigate = useNavigate();
 
   function closeLocalSession() {
-    clearSession()
-    setAuth(null)
-    setPantalla('login')
+    clearSession();
+    setAuth(null);
+    navigate('/login', { replace: true });
   }
 
   useEffect(() => {
-    const token = localStorage.getItem('bizly_token')
-    const refreshToken = localStorage.getItem('bizly_refresh_token')
-    if (!token || !refreshToken) {
-      clearSession()
-      setCheckingSession(false)
-      return
+    const token =
+      localStorage.getItem(TOKEN_KEY) || localStorage.getItem('bizly_token');
+    if (!token) {
+      clearSession();
+      setCheckingSession(false);
+      return;
     }
 
-    apiFetch('/auth/me')
-      .then(({ usuario }: { usuario: Usuario }) => {
-        saveSession({ usuario })
-        setAuth({ token: localStorage.getItem('bizly_token'), refreshToken: localStorage.getItem('bizly_refresh_token'), usuario })
+    api
+      .get('/auth/me')
+      .then((res) => {
+        const usuario: Usuario = res.data?.usuario || res.data;
+        saveSession({ usuario });
+        setAuth({
+          token:
+            localStorage.getItem(TOKEN_KEY) ||
+            localStorage.getItem('bizly_token'),
+          refreshToken: localStorage.getItem('bizly_refresh_token'),
+          usuario,
+        });
       })
       .catch(closeLocalSession)
-      .finally(() => setCheckingSession(false))
+      .finally(() => setCheckingSession(false));
 
-    const expire = () => closeLocalSession()
-    window.addEventListener('bizly-session-expired', expire)
-    return () => window.removeEventListener('bizly-session-expired', expire)
-  }, [])
+    const expire = () => closeLocalSession();
+    window.addEventListener('bizly-session-expired', expire);
+    return () => window.removeEventListener('bizly-session-expired', expire);
+  }, []);
 
-  function handleLogin(accessToken: string, refreshToken: string, usuario: Usuario) {
-    saveSession({ accessToken, refreshToken, usuario })
-    setAuth({ token: accessToken, refreshToken, usuario })
+  function handleLogin(
+    accessToken: string,
+    refreshToken: string,
+    usuario: Usuario
+  ) {
+    saveSession({ accessToken, refreshToken, usuario });
+    setAuth({ token: accessToken, refreshToken, usuario });
+    navigate('/dashboard', { replace: true });
   }
 
   async function handleLogout() {
-    try { await apiFetch('/auth/logout', { method: 'POST' }) } catch {}
-    closeLocalSession()
+    try {
+      await api.post('/auth/logout');
+    } catch {}
+    closeLocalSession();
   }
 
-  if (checkingSession) return <SessionSplash />
-
-  if (auth) {
-    return (
-      <AppProvider usuario={auth.usuario}>
-        <Shell usuario={auth.usuario} onLogout={handleLogout} onSessionClosed={closeLocalSession} />
-      </AppProvider>
-    )
+  if (checkingSession) {
+    return <SessionSplash />;
   }
 
-  if (pantalla === 'registro') {
-    return <Registro onLogin={handleLogin} onIrLogin={() => setPantalla('login')} />
-  }
-  if (pantalla === 'recuperar') {
-    return <RecuperarPassword onIrLogin={() => setPantalla('login')} />
-  }
   return (
-    <Login
-      onLogin={handleLogin}
-      onIrRegistro={() => setPantalla('registro')}
-      onIrRecuperar={() => setPantalla('recuperar')}
-    />
-  )
+    <>
+      <Toaster position="top-right" richColors />
+      <Routes>
+        {/* Rutas Públicas */}
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <LoginPage
+                onLogin={handleLogin}
+                onIrRegistro={() => navigate('/registro')}
+                onIrRecuperar={() => navigate('/recuperar')}
+              />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/registro"
+          element={
+            <PublicRoute>
+              <RegisterPage
+                onLogin={handleLogin}
+                onIrLogin={() => navigate('/login')}
+              />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/recuperar"
+          element={
+            <PublicRoute>
+              <ForgotPasswordPage onIrLogin={() => navigate('/login')} />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={<Navigate to="/recuperar" replace />}
+        />
+        <Route
+          path="/quienes-somos"
+          element={
+            <PublicRoute>
+              <AboutPage />
+            </PublicRoute>
+          }
+        />
+
+        {/* Rutas Privadas / Protegidas dentro de MainLayout */}
+        <Route
+          element={
+            <ProtectedRoute usuario={auth?.usuario}>
+              <AppProvider usuario={auth?.usuario}>
+                <MainLayout
+                  usuario={auth?.usuario}
+                  onLogout={handleLogout}
+                />
+              </AppProvider>
+            </ProtectedRoute>
+          }
+        >
+          <Route
+            path="/dashboard"
+            element={
+              <Dashboard
+                onNav={(page: string) =>
+                  navigate(page.startsWith('/') ? page : `/${page}`)
+                }
+                usuario={auth?.usuario}
+              />
+            }
+          />
+          <Route path="/ventas" element={<VentasPage />} />
+          <Route path="/inventario" element={<Inventario />} />
+          <Route path="/clientes" element={<Clientes />} />
+          <Route path="/reportes" element={<ReportesPage />} />
+          <Route
+            path="/cuenta"
+            element={
+              <MiCuenta
+                usuario={auth?.usuario}
+                onSessionClosed={closeLocalSession}
+              />
+            }
+          />
+
+          {/* Rutas Administrativas con RBAC estricto */}
+          <Route
+            path="/auditoria"
+            element={
+              <ProtectedRoute
+                usuario={auth?.usuario}
+                allowedRoles={ADMIN_ROLES}
+              >
+                <Auditoria />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/configuracion"
+            element={
+              <ProtectedRoute
+                usuario={auth?.usuario}
+                allowedRoles={ADMIN_ROLES}
+              >
+                <Configuracion usuario={auth?.usuario} />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* Ruta Pública Principal: Landing Page B2B */}
+        <Route
+          path="/"
+          element={
+            <PublicRoute>
+              <LandingPage />
+            </PublicRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
+  );
 }
